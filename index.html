@@ -934,12 +934,12 @@
   // CONFIG — update PROGRAM_ID and RPC after anchor build + deploy
   // =====================================================================
   const CONFIG = {
-    PROGRAM_ID:  'CnpXzPKxjLCtmgoGsiNUMg9N5p3cB8XZQTk9giWxctha',  // deployed to devnet
+    PROGRAM_ID:  'MAINNET_PROGRAM_ID_TBD',  // ← mainnet deploy後に更新
     OPS_WALLET:  '3QMzqM2B6ZuBzVRMLdLf2NJAqw4BwmBXzUVJgiHEBt3u',
     RPC:         'https://mainnet.helius-rpc.com/?api-key=6288db54-2434-45c6-b0d9-8c4fbf6dc1e7',
-    FEE_TOTAL:   0.02,   // 2%
-    FEE_OPS:     0.02,   // 2% → ops_wallet
-    FEE_GAS:     0.0,    // gas is negligible on Solana
+    FEE_TOTAL:   0.01,   // 1% (プログラムソース: FEE_BPS=100)
+    FEE_OPS:     0.008,  // 0.8% → ops_wallet
+    FEE_GAS:     0.002,  // 0.2% → vault gas reserve（ユーザーには戻らない）
     MIN_SOL:     0.01,
     MIN_DURATION: 60,    // seconds
   };
@@ -1164,7 +1164,8 @@
       <div class="modal-detail"><span class="label">Lock Amount</span><span class="value">${amount.toFixed(4)} SOL</span></div>
       <div class="modal-detail"><span class="label">Duration</span><span class="value">${getDurationLabel(selectedDurationSecs)}</span></div>
       <div class="modal-detail"><span class="label">Unlock Date</span><span class="value">${new Date(unlockTs*1000).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})}</span></div>
-      <div class="modal-detail"><span class="label">Platform Fee (2%)</span><span class="value">${ops.toFixed(4)} SOL</span></div>
+      <div class="modal-detail"><span class="label">Platform Fee (0.8%)</span><span class="value">${ops.toFixed(4)} SOL</span></div>
+      <div class="modal-detail"><span class="label">Gas Reserve (0.2%)</span><span class="value">${gas.toFixed(4)} SOL</span></div>
       <div class="modal-detail"><span class="label">You Receive Back</span><span class="value" style="color:var(--green)">${net.toFixed(4)} SOL</span></div>
     `;
     document.getElementById('confirmModal').classList.add('show');
@@ -1299,34 +1300,26 @@
           continue;
         }
 
-        // LockRecord レイアウト推定:
-        // disc(8) + owner(32) + amount(8) + duration(8) + created_at(8) + nonce(8) + bump(1)
+        // LockRecord 確定レイアウト（lib.rs より）:
+        // disc(8) + owner(32) + original_amount(8) + net_locked(8) + gas_reserve(8)
+        //         + unlock_time(8) + created_at(8) + duration_seconds(8)
+        //         + is_withdrawn(1) + nonce(8) + lock_bump(1) + vault_bump(1)
+        // offset: 8       40              48           56            64
         var lbuf = Buffer.from(lockInfo.data);
-        console.log('[TimeLock] nonce', nonce, 'raw bytes[0..80]:', Array.from(lbuf.slice(0, 80)));
+        console.log('[TimeLock] nonce', nonce, 'data len:', lbuf.length);
 
-        var amountLamports = Number(lbuf.readBigUInt64LE(40));
-        var netSol         = vaultLamports / web3.LAMPORTS_PER_SOL; // 実際の引き出し可能残高
-        var amountSol      = amountLamports / web3.LAMPORTS_PER_SOL;
+        var amountLamports  = Number(lbuf.readBigUInt64LE(40)); // original_amount
+        var netLockedLamps  = Number(lbuf.readBigUInt64LE(48)); // net_locked (99%)
+        var unlockTs        = Number(lbuf.readBigInt64LE(64));  // unlock_time
 
-        // unlockTs の解析: 複数レイアウトを試す
+        var amountSol = amountLamports / web3.LAMPORTS_PER_SOL;
+        var netSol    = netLockedLamps / web3.LAMPORTS_PER_SOL; // 正確な返金額
+
+        // sanity check: unlock_ts が妥当な範囲（2020年〜2050年）か
         var now = Math.floor(Date.now() / 1000);
-        var unlockTs;
-
-        // 試行1: created_at(offset56) + duration(offset48)
-        var dur1 = Number(lbuf.readBigInt64LE(48));
-        var ca1  = Number(lbuf.readBigInt64LE(56));
-        var ts1  = ca1 + dur1;
-
-        // 試行2: unlock_ts が offset48 に直接格納
-        var ts2 = Number(lbuf.readBigInt64LE(48));
-
-        // 妥当な範囲（2020年〜2050年）のものを採用
-        var valid = function(ts) { return ts > 1577836800 && ts < 2524608000; };
-        if (valid(ts1))      { unlockTs = ts1; }
-        else if (valid(ts2)) { unlockTs = ts2; }
-        else {
-          console.warn('[TimeLock] nonce', nonce, ': could not parse unlockTs, skipping');
-          continue; // 解析できなければスキップ
+        if (unlockTs < 1577836800 || unlockTs > 2524608000) {
+          console.warn('[TimeLock] nonce', nonce, ': invalid unlockTs =', unlockTs, ', skipping');
+          continue;
         }
 
         console.log('[TimeLock] Recovered lock: nonce=' + nonce
@@ -1442,8 +1435,10 @@
     // If config is already initialized, READ ops_wallet from on-chain data (offset 8..40).
     // This avoids any mismatch between CONFIG.OPS_WALLET and what's stored on-chain.
     let opsWallet;
-    if (configOk && configInfo && configInfo.data.length >= 40) {
-      opsWallet = new web3.PublicKey(configInfo.data.slice(8, 40));
+    // Config layout: disc(8) + authority(32) + ops_wallet(32) + ...
+    // ops_wallet は offset 40〜72（authorityの後）
+    if (configOk && configInfo && configInfo.data.length >= 72) {
+      opsWallet = new web3.PublicKey(configInfo.data.slice(40, 72));
       console.log('[TimeLock] ops_wallet read from config account:', opsWallet.toBase58());
     } else {
       opsWallet = new web3.PublicKey(CONFIG.OPS_WALLET);
@@ -1479,11 +1474,11 @@
       const disc = Buffer.from([229, 142, 179, 158, 177, 92, 220, 92]);
       const data = Buffer.alloc(8);
       disc.copy(data, 0);
-      console.log('[TimeLock] Need to init_user_state (with config as first account)');
+      // InitUserState accounts: user_state, user, system_program (3 accounts only)
+      console.log('[TimeLock] Need to init_user_state');
       setupIxs.push(new web3.TransactionInstruction({
         programId,
         keys: [
-          { pubkey: configPda,    isSigner: false, isWritable: true  }, // config is required first
           { pubkey: userStatePda, isSigner: false, isWritable: true  },
           { pubkey: userPubkey,   isSigner: true,  isWritable: true  },
           { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
