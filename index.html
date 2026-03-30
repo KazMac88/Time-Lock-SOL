@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Time Lock SOL — Lock Your SOL. Beat Your Instincts.</title>
+  <meta name="description" content="Time Lock SOL: A trustless, open-source Solana time-lock vault. Send your SOL, set a timer, and the blockchain enforces your resolve." />
+  <meta property="og:title" content="Time Lock SOL" />
+  <meta property="og:description" content="Lock your SOL on-chain. Immutable. Unstoppable. Trustless." />
+  <meta property="og:image" content="https://timelocksol.xyz/og.png" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⏳</text></svg>" />
+
+  <!-- Buffer polyfill -->
+  <script>
+  (function(){
+    function mkBuf(size){
+      var b=new Uint8Array(size);
+      b.copy=function(t,ts,ss,se){ts=ts||0;ss=ss||0;se=se===undefined?this.length:se;for(var i=ss;i<se;i++)t[ts+(i-ss)]=this[i];};
+      b.writeBigUInt64LE=function(v,o){new DataView(this.buffer,this.byteOffset+(o||0)).setBigUint64(0,BigInt(v),true);return(o||0)+8;};
+      b.writeBigInt64LE=function(v,o){new DataView(this.buffer,this.byteOffset+(o||0)).setBigInt64(0,BigInt(v),true);return(o||0)+8;};
+      b.writeUInt32LE=function(v,o){new DataView(this.buffer,this.byteOffset+(o||0)).setUint32(0,v,true);return(o||0)+4;};
+      b.readBigUInt64LE=function(o){return new DataView(this.buffer,this.byteOffset+(o||0)).getBigUint64(0,true);};
+      b.readBigInt64LE=function(o){return new DataView(this.buffer,this.byteOffset+(o||0)).getBigInt64(0,true);};
+      b.readUInt32LE=function(o){return new DataView(this.buffer,this.byteOffset+(o||0)).getUint32(0,true);};
+      b.slice=function(s,e){return fromArr(this.subarray(s,e));};
+      b.toString=function(enc){if(enc==='hex'){var r='';for(var i=0;i<this.length;i++)r+=('0'+this[i].toString(16)).slice(-2);return r;}return new TextDecoder().decode(this);};
+      return b;
+    }
+    function fromArr(a){var b=mkBuf(a.length);b.set(a);return b;}
+    window.Buffer={
+      from:function(src,enc){
+        if(typeof src==='string'){
+          if(enc==='hex'){var h=mkBuf(src.length/2);for(var i=0;i<src.length;i+=2)h[i/2]=parseInt(src.substr(i,2),16);return h;}
+          if(enc==='base64'){var bin=atob(src);var h=mkBuf(bin.length);for(var i=0;i<bin.length;i++)h[i]=bin.charCodeAt(i);return h;}
+          return fromArr(new TextEncoder().encode(src));
+        }
+        if(src instanceof ArrayBuffer)return fromArr(new Uint8Array(src));
+        if(Array.isArray(src)){var h=mkBuf(src.length);for(var i=0;i<src.length;i++)h[i]=src[i];return h;}
+        return fromArr(new Uint8Array(src));
+      },
+      alloc:function(n,f){var b=mkBuf(n);if(f!==undefined)b.fill(f);return b;},
+      allocUnsafe:function(n){return mkBuf(n);},
+      concat:function(a,tl){var t=tl||a.reduce(function(s,x){return s+x.length;},0);var r=mkBuf(t);var o=0;a.forEach(function(x){r.set(x,o);o+=x.length;});return r;},
+      isBuffer:function(o){return o instanceof Uint8Array;}
+    };
+  })();
+  </script>
+  <!-- Solana Web3.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
+
+  <style>
+    :root {
+      --purple: #9945FF;
+      --purple-light: #B97BFF;
+      --purple-dark: #6B2FCC;
+      --green: #14F195;
+      --green-dark: #0CC070;
+      --bg: #0A0A12;
+      --bg2: #0F0F1E;
+      --bg3: #141428;
+      --card: rgba(255,255,255,0.04);
+      --card-border: rgba(153,69,255,0.2);
+      --text: #E8E8F0;
+      --text-dim: #888899;
+      --text-dimmer: #555566;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --glow-purple: 0 0 40px rgba(153,69,255,0.3);
+      --glow-green: 0 0 40px rgba(20,241,149,0.25);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(153,69,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(153,69,255,0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.5;
+    }
+    .blob-1 {
+      width: 600px; height: 600px;
+      top: -200px; left: -200px;
+      background: radial-gradient(circle, rgba(153,69,255,0.35) 0%, transparent 70%);
+      animation: blobFloat 12s ease-in-out infinite;
+    }
+    .blob-2 {
+      width: 500px; height: 500px;
+      bottom: -150px; right: -150px;
+      background: radial-gradient(circle, rgba(20,241,149,0.25) 0%, transparent 70%);
+      animation: blobFloat 16s ease-in-out infinite reverse;
+    }
+    @keyframes blobFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(30px, -30px) scale(1.05); }
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ============ NAV ============ */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10,10,18,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(153,69,255,0.15);
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      height: 64px;
+      gap: 24px;
+    }
+    .nav-logo {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--purple-light), var(--green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .nav-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    /* Wallet button pinned to far right */
+    .nav-wallet {
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .btn-wallet {
+      background: rgba(153,69,255,0.15);
+      border: 1px solid rgba(153,69,255,0.4);
+      color: var(--purple-light);
+      padding: 8px 18px;
+      border-radius: 50px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-wallet:hover {
+      background: rgba(153,69,255,0.3);
+      border-color: var(--purple);
+      color: #fff;
+    }
+    .btn-wallet.connected {
+      background: rgba(20,241,149,0.1);
+      border-color: rgba(20,241,149,0.4);
+      color: var(--green);
+    }
+    .btn-wallet.connected:hover {
+      background: rgba(20,241,149,0.2);
+    }
+
+    /* ============ HERO ============ */
+    .hero {
+      text-align: center;
+      padding: 100px 0 60px;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(153,69,255,0.12);
+      border: 1px solid rgba(153,69,255,0.3);
+      color: var(--purple-light);
+      padding: 6px 16px;
+      border-radius: 50px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    .hero-hourglass {
+      font-size: 72px;
+      margin-bottom: 24px;
+      display: block;
+      filter: drop-shadow(0 0 30px rgba(153,69,255,0.6));
+      animation: pulse 3s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 30px rgba(153,69,255,0.6)); }
+      50% { transform: scale(1.05); filter: drop-shadow(0 0 50px rgba(153,69,255,0.9)); }
+    }
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -2px;
+      margin-bottom: 20px;
+    }
+    .hero h1 .grad {
+      background: linear-gradient(135deg, var(--purple-light) 0%, var(--green) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 1.2rem;
+      color: var(--text-dim);
+      max-width: 600px;
+      margin: 0 auto 40px;
+      line-height: 1.6;
+    }
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 48px;
+      margin-top: 48px;
+    }
+    .stat-item { text-align: center; }
+    .stat-val {
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--purple-light), var(--green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-dimmer);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 4px;
+    }
+
+    /* ============ MAIN CARD ============ */
+    .lock-section { padding: 20px 0 80px; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 40px;
+      backdrop-filter: blur(10px);
+      box-shadow: var(--glow-purple);
+    }
+    .card-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ---- form inputs ---- */
+    .form-row { margin-bottom: 24px; }
+    .form-label {
+      display: block;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .input-wrap .unit {
+      position: absolute;
+      right: 16px;
+      color: var(--text-dimmer);
+      font-size: 0.9rem;
+      pointer-events: none;
+    }
+    input[type="number"] {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(153,69,255,0.2);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 14px 56px 14px 18px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type="number"]:focus { border-color: var(--purple); }
+    input[type="number"].error { border-color: #ff4d4d; }
+
+    .duration-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .dur-btn {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(153,69,255,0.15);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      padding: 12px 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .dur-btn:hover, .dur-btn.active {
+      background: rgba(153,69,255,0.15);
+      border-color: var(--purple);
+      color: var(--purple-light);
+    }
+
+    .custom-duration {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    .custom-dur-input {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(153,69,255,0.15);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+      -moz-appearance: textfield;
+    }
+    .custom-dur-input::-webkit-outer-spin-button,
+    .custom-dur-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .custom-dur-input:focus { border-color: var(--purple); }
+
+    /* ---- fee display ---- */
+    .fee-box {
+      background: rgba(153,69,255,0.06);
+      border: 1px solid rgba(153,69,255,0.15);
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+      margin: 20px 0;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .fee-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .fee-row.total {
+      border-top: 1px solid rgba(153,69,255,0.15);
+      margin-top: 8px;
+      padding-top: 12px;
+      color: var(--green);
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+
+    /* ---- buttons ---- */
+    .btn-primary {
+      width: 100%;
+      padding: 18px;
+      background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 0 30px rgba(153,69,255,0.3);
+      letter-spacing: 0.02em;
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 50px rgba(153,69,255,0.5);
+    }
+    .btn-primary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ============ MY LOCKS ============ */
+    .locks-section { padding: 0 0 80px; }
+
+    .lock-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    .lock-card.unlocked {
+      border-color: rgba(20,241,149,0.3);
+    }
+    .lock-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .lock-amount {
+      font-size: 1.5rem;
+      font-weight: 800;
+    }
+    .lock-badge {
+      padding: 4px 12px;
+      border-radius: 50px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .lock-badge.locked {
+      background: rgba(153,69,255,0.15);
+      border: 1px solid rgba(153,69,255,0.3);
+      color: var(--purple-light);
+    }
+    .lock-badge.unlocked {
+      background: rgba(20,241,149,0.15);
+      border: 1px solid rgba(20,241,149,0.3);
+      color: var(--green);
+    }
+
+    .countdown {
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      font-variant-numeric: tabular-nums;
+      margin: 8px 0;
+      color: var(--purple-light);
+    }
+    .countdown.expired { color: var(--green); }
+
+    .countdown-label {
+      font-size: 0.75rem;
+      color: var(--text-dimmer);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .btn-unlock {
+      margin-top: 16px;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--green-dark), var(--green));
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #000;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-unlock:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 30px rgba(20,241,149,0.4);
+    }
+    .btn-unlock:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ============ MODAL ============ */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      backdrop-filter: blur(4px);
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: var(--bg3);
+      border: 1px solid rgba(153,69,255,0.3);
+      border-radius: var(--radius);
+      padding: 40px;
+      max-width: 480px;
+      width: 90%;
+      box-shadow: 0 0 80px rgba(153,69,255,0.2);
+    }
+    .modal h3 {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, var(--purple-light), var(--green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .modal-detail {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.9rem;
+    }
+    .modal-detail:last-of-type { border-bottom: none; }
+    .modal-detail .label { color: var(--text-dim); }
+    .modal-detail .value { font-weight: 600; }
+    .modal-warn {
+      background: rgba(255,165,0,0.1);
+      border: 1px solid rgba(255,165,0,0.3);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin: 20px 0;
+      font-size: 0.85rem;
+      color: #FFA500;
+      line-height: 1.5;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .btn-cancel {
+      flex: 1;
+      padding: 14px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-cancel:hover { border-color: rgba(255,255,255,0.3); color: var(--text); }
+    .btn-confirm {
+      flex: 2;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-confirm:hover { box-shadow: 0 0 30px rgba(153,69,255,0.4); }
+
+    /* ============ HOW IT WORKS ============ */
+    .how-section { padding: 80px 0; }
+    .section-title {
+      font-size: 2rem;
+      font-weight: 800;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .section-sub {
+      text-align: center;
+      color: var(--text-dim);
+      margin-bottom: 48px;
+    }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+    }
+    .step-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      text-align: center;
+    }
+    .step-num {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+      color: #fff;
+      font-size: 1.2rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .step-title { font-weight: 700; margin-bottom: 8px; }
+    .step-desc { font-size: 0.875rem; color: var(--text-dim); line-height: 1.6; }
+
+    /* ============ STORY ============ */
+    .story-section { padding: 80px 0; }
+    .story-card {
+      background: linear-gradient(135deg, rgba(153,69,255,0.08) 0%, rgba(20,241,149,0.05) 100%);
+      border: 1px solid rgba(153,69,255,0.2);
+      border-radius: var(--radius);
+      padding: 48px;
+    }
+    .story-card blockquote {
+      font-size: 1.15rem;
+      line-height: 1.8;
+      color: var(--text-dim);
+      font-style: italic;
+      border-left: 3px solid var(--purple);
+      padding-left: 20px;
+      margin-bottom: 24px;
+    }
+    .story-sig {
+      font-size: 0.85rem;
+      color: var(--text-dimmer);
+      text-align: right;
+    }
+
+    /* ============ TOAST ============ */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      z-index: 300;
+      background: var(--bg3);
+      border: 1px solid rgba(153,69,255,0.4);
+      border-radius: var(--radius-sm);
+      padding: 14px 20px;
+      font-size: 0.875rem;
+      max-width: 340px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: rgba(20,241,149,0.4); }
+    .toast.error { border-color: rgba(255,77,77,0.5); }
+    .toast.info { border-color: rgba(153,69,255,0.5); }
+
+    /* ============ FOOTER ============ */
+    footer {
+      border-top: 1px solid rgba(153,69,255,0.1);
+      padding: 40px 0;
+      text-align: center;
+      color: var(--text-dimmer);
+      font-size: 0.85rem;
+    }
+    footer a { color: var(--purple-light); text-decoration: none; }
+    footer a:hover { color: var(--green); }
+
+    /* ============ RESPONSIVE ============ */
+    @media (max-width: 600px) {
+      .duration-grid { grid-template-columns: repeat(2, 1fr); }
+      .custom-duration { grid-template-columns: 1fr 1fr 1fr; }
+      .hero-stats { gap: 24px; }
+      .card { padding: 24px 20px; }
+      .story-card { padding: 28px 20px; }
+      .countdown { font-size: 1.4rem; }
+      .nav-links { display: none; }
+    }
+
+    /* ---- empty state ---- */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-dimmer);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 16px; }
+    .empty-state p { font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <!-- NAV -->
+  <nav>
+    <div class="container">
+      <div class="nav-inner">
+        <a href="#" class="nav-logo">⏳ Time Lock SOL</a>
+        <ul class="nav-links">
+          <li><a href="#lock">Lock</a></li>
+          <li><a href="#my-locks">My Locks</a></li>
+          <li><a href="#how">How It Works</a></li>
+          <li><a href="https://github.com/YOUR_HANDLE/timelock-sol" target="_blank">GitHub</a></li>
+        </ul>
+        <!-- Wallet button isolated to far right -->
+        <div class="nav-wallet">
+          <button class="btn-wallet" id="walletBtn" onclick="toggleWallet()">Connect Wallet</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">🔒 Trustless · On-Chain · Open Source</div>
+      <span class="hero-hourglass">⏳</span>
+      <h1>Lock Your SOL.<br><span class="grad">Beat Your Instincts.</span></h1>
+      <p class="hero-sub">
+        An immutable Solana vault that enforces your conviction.<br>
+        No admin keys. No emergency exits. Just math and time.
+      </p>
+      <div class="hero-stats">
+        <div class="stat-item">
+          <div class="stat-val" id="statLocks">0</div>
+          <div class="stat-label">Locks Created</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val" id="statSol">0</div>
+          <div class="stat-label">SOL Locked</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">100%</div>
+          <div class="stat-label">Trustless</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOCK FORM -->
+  <section class="lock-section" id="lock">
+    <div class="container">
+      <div class="card">
+        <div class="card-title">🔒 Create a New Lock</div>
+
+        <!-- SOL Amount -->
+        <div class="form-row">
+          <label class="form-label">Amount to Lock</label>
+          <div class="input-wrap">
+            <input
+              type="number"
+              id="solAmount"
+              placeholder="0.00"
+              min="0.01"
+              step="0.01"
+              onkeydown="blockBadKeys(event)"
+              oninput="onAmountInput()"
+              onblur="onAmountBlur()"
+            />
+            <span class="unit">SOL</span>
+          </div>
+        </div>
+
+        <!-- Duration Quick-Select -->
+        <div class="form-row">
+          <label class="form-label">Lock Duration</label>
+          <div class="duration-grid">
+            <button class="dur-btn" onclick="setDuration(7*86400)">7 Days</button>
+            <button class="dur-btn" onclick="setDuration(30*86400)">1 Month</button>
+            <button class="dur-btn" onclick="setDuration(90*86400)">3 Months</button>
+            <button class="dur-btn" onclick="setDuration(180*86400)">6 Months</button>
+            <button class="dur-btn" onclick="setDuration(365*86400)">1 Year</button>
+            <button class="dur-btn" onclick="setDuration(2*365*86400)">2 Years</button>
+            <button class="dur-btn" onclick="setDuration(5*365*86400)">5 Years</button>
+            <button class="dur-btn" onclick="setDuration(10*365*86400)">10 Years</button>
+          </div>
+          <label class="form-label" style="margin-top:16px">Custom Duration</label>
+          <div class="custom-duration">
+            <div class="input-wrap">
+              <input type="number" id="durDays" class="custom-dur-input" placeholder="Days" min="0" step="1" oninput="onCustomDur()" onkeydown="blockBadKeys(event)" />
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="durHours" class="custom-dur-input" placeholder="Hours" min="0" max="23" step="1" oninput="onCustomDur()" onkeydown="blockBadKeys(event)" />
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="durMins" class="custom-dur-input" placeholder="Mins" min="0" max="59" step="1" oninput="onCustomDur()" onkeydown="blockBadKeys(event)" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Fee Preview -->
+        <div class="fee-box">
+          <div class="fee-row"><span>Platform fee (0.8%)</span><span id="feeOps">— SOL</span></div>
+          <div class="fee-row"><span>Gas reserve (0.2%)</span><span id="feeGas">— SOL</span></div>
+          <div class="fee-row total"><span>You receive back</span><span id="feeNet">— SOL</span></div>
+        </div>
+
+        <button class="btn-primary" id="lockBtn" onclick="startLock()">
+          🔒 Lock SOL
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MY LOCKS -->
+  <section class="locks-section" id="my-locks">
+    <div class="container">
+      <h2 class="section-title">🔐 My Locks</h2>
+      <p class="section-sub">Your active and completed time-locks.</p>
+      <div id="locksContainer">
+        <div class="empty-state">
+          <div class="icon">⏳</div>
+          <p>No locks yet. Connect your wallet and create your first lock above.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how-section" id="how">
+    <div class="container">
+      <h2 class="section-title">How It Works</h2>
+      <p class="section-sub">Five simple steps to enforced conviction.</p>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num">1</div>
+          <div class="step-title">Connect Wallet</div>
+          <div class="step-desc">Link your Phantom or Solflare wallet. Non-custodial — we never touch your keys.</div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">2</div>
+          <div class="step-title">Set Amount</div>
+          <div class="step-desc">Choose how much SOL to lock. Minimum 0.01 SOL.</div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">3</div>
+          <div class="step-title">Choose Duration</div>
+          <div class="step-desc">Pick your lock period — from 1 minute to 10 years.</div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">4</div>
+          <div class="step-title">Confirm On-Chain</div>
+          <div class="step-desc">Sign the transaction. Your SOL enters an immutable program-derived vault.</div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">5</div>
+          <div class="step-title">Unlock & Claim</div>
+          <div class="step-desc">When the timer expires, withdraw 99% of your SOL back to your wallet.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEVELOPER STORY -->
+  <section class="story-section">
+    <div class="container">
+      <div class="story-card">
+        <h2 class="section-title" style="text-align:left;margin-bottom:24px">Why We Built This</h2>
+        <blockquote>
+          "I bought SOL at $200. I told myself I'd hold for five years. Then the crash hit $15,
+          and I panic-sold everything. Six months later, SOL was back at $100. The problem was
+          never the price — it was me. I couldn't stop myself from making the worst possible
+          decision at the worst possible moment. So I built the thing I wish had existed."
+        </blockquote>
+        <p style="color:var(--text-dim);line-height:1.7;margin-bottom:16px">
+          Time Lock SOL isn't about trust in us. It's about removing yourself from the equation.
+          The smart contract holds your SOL in a program-derived address. No admin key can override it.
+          No emergency button exists. The blockchain is the only judge — and it doesn't feel fear.
+        </p>
+        <p style="color:var(--text-dim);line-height:1.7;margin-bottom:16px">
+          This is for everyone who ever sold too early.
+          For the next generation who won't have to.
+          <strong style="color:var(--purple-light)">Lock it. Forget it. Be rewarded by time.</strong>
+        </p>
+        <div class="story-sig">— The Time Lock SOL Team</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <p style="margin-bottom:12px">
+        <a href="https://github.com/YOUR_HANDLE/timelock-sol" target="_blank">GitHub</a> ·
+        <a href="https://twitter.com/TimeLockSOL" target="_blank">X / Twitter</a> ·
+        <a href="https://solana.com" target="_blank">Solana</a>
+      </p>
+      <p>MIT License · Open Source · Trustless · Non-Custodial</p>
+      <p style="margin-top:8px;color:var(--text-dimmer);font-size:0.8rem">
+        Time Lock SOL — Building the discipline infrastructure of Web3.
+      </p>
+    </div>
+  </footer>
+
+  <!-- CONFIRM MODAL -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal">
+      <h3>⏳ Confirm Lock</h3>
+      <div id="modalDetails"></div>
+      <div class="modal-warn">
+        ⚠️ This action is <strong>irreversible</strong> until the timer expires.
+        No one — not even the developers — can unlock your SOL early.
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-confirm" id="confirmBtn" onclick="confirmLock()">Lock It 🔒</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+  // =====================================================================
+  // CONFIG — update PROGRAM_ID and RPC after anchor build + deploy
+  // =====================================================================
+  const CONFIG = {
+    PROGRAM_ID:  'CnpXzPKxjLCtmgoGsiNUMg9N5p3cB8XZQTk9giWxctha',  // deployed to devnet
+    OPS_WALLET:  '3QMzqM2B6ZuBzVRMLdLf2NJAqw4BwmBXzUVJgiHEBt3u',
+    RPC:         'https://api.mainnet-beta.solana.com',
+    FEE_TOTAL:   0.02,   // 2%
+    FEE_OPS:     0.02,   // 2% → ops_wallet
+    FEE_GAS:     0.0,    // gas is negligible on Solana
+    MIN_SOL:     0.01,
+    MIN_DURATION: 60,    // seconds
+  };
+
+  // =====================================================================
+  // STATE
+  // =====================================================================
+  let walletPubkey = null;
+  let walletProvider = null;
+  let connection = null;
+  let selectedDurationSecs = 0;
+  let pendingLock = null;
+  let userLocks = [];   // { id, amountSol, netSol, unlockTs, txSig, withdrawn }
+  let countdownInterval = null;
+
+  // localStorage key はウォレットアドレスごとに分ける → 他人のロックが見えない
+  function locksKey() {
+    return walletPubkey ? 'timelock_locks_' + walletPubkey : null;
+  }
+  function loadLocksFromStorage() {
+    const key = locksKey();
+    if (!key) { userLocks = []; return; }
+    try {
+      const saved = localStorage.getItem(key);
+      userLocks = saved ? JSON.parse(saved) : [];
+    } catch(e) { userLocks = []; }
+  }
+  function saveLocks() {
+    const key = locksKey();
+    if (!key) return;
+    try { localStorage.setItem(key, JSON.stringify(userLocks)); } catch(e) {}
+  }
+
+  // =====================================================================
+  // WALLET CONNECTION (Phantom / Solflare)
+  // =====================================================================
+  function detectWallet() {
+    // Phantom — prefer window.phantom.solana
+    if (window.phantom?.solana?.isPhantom) return window.phantom.solana;
+    // Phantom legacy injection
+    if (window.solana?.isPhantom) return window.solana;
+    // Solflare
+    if (window.solflare?.isSolflare) return window.solflare;
+    return null;
+  }
+
+  async function connectWallet() {
+    const provider = detectWallet();
+    if (!provider) {
+      showToast('Wallet not found. Solflare か Phantom をインストールしてください。', 'error');
+      setTimeout(() => window.open('https://solflare.com/', '_blank'), 1200);
+      return;
+    }
+    try {
+      const resp = await provider.connect();
+      walletProvider = provider;
+      walletPubkey = (resp?.publicKey || provider.publicKey).toString();
+      connection = new solanaWeb3.Connection(CONFIG.RPC, 'confirmed');
+
+      const btn = document.getElementById('walletBtn');
+      const short = walletPubkey.slice(0,4) + '...' + walletPubkey.slice(-4);
+      btn.textContent = '🟢 ' + short;
+      btn.classList.add('connected');
+
+      // 接続したウォレット専用のローカルデータをロード
+      loadLocksFromStorage();
+
+      showToast('Wallet connected: ' + short, 'success');
+      renderLocks();
+      updateStats();
+
+      // オンチェーンから過去のロックを自動復元（localStorage不要）
+      showToast('🔍 Scanning blockchain for your locks…', 'info');
+      loadOnChainLocks().then(function() {
+        // 復元されたロックがあればトースト表示
+        var recovered = userLocks.filter(function(l) { return l.fromChain; });
+        if (recovered.length > 0) {
+          showToast('✅ ' + recovered.length + ' lock(s) recovered from blockchain!', 'success');
+        }
+      });
+    } catch(err) {
+      showToast('Wallet connection cancelled.', 'error');
+    }
+  }
+
+  function disconnectWallet() {
+    if (walletProvider?.disconnect) walletProvider.disconnect();
+    walletPubkey = null;
+    walletProvider = null;
+    userLocks = []; // メモリ上のロック情報をクリア → 他人には見えない
+    const btn = document.getElementById('walletBtn');
+    btn.textContent = 'Connect Wallet';
+    btn.classList.remove('connected');
+    showToast('Wallet disconnected.');
+    renderLocks();
+  }
+
+  function toggleWallet() {
+    if (walletPubkey) disconnectWallet();
+    else connectWallet();
+  }
+
+  // =====================================================================
+  // INPUT VALIDATION — SOL AMOUNT
+  // =====================================================================
+  function blockBadKeys(e) {
+    // Block minus, plus, e/E (scientific notation)
+    if (['-', '+', 'e', 'E'].includes(e.key)) {
+      e.preventDefault();
+    }
+  }
+
+  function onAmountInput() {
+    const el = document.getElementById('solAmount');
+    let val = parseFloat(el.value);
+    // If someone typed something that resolved to negative or NaN, clear
+    if (el.value !== '' && (isNaN(val) || val < 0)) {
+      el.value = '';
+    }
+    refreshFee();
+  }
+
+  function onAmountBlur() {
+    const el = document.getElementById('solAmount');
+    if (el.value === '') return;
+    let val = parseFloat(el.value);
+    if (isNaN(val) || val < CONFIG.MIN_SOL) {
+      el.value = CONFIG.MIN_SOL.toFixed(2);
+      showToast('Minimum lock amount is ' + CONFIG.MIN_SOL + ' SOL');
+    }
+    refreshFee();
+  }
+
+  // =====================================================================
+  // DURATION
+  // =====================================================================
+  function setDuration(secs) {
+    selectedDurationSecs = secs;
+    // Clear custom inputs
+    document.getElementById('durDays').value = '';
+    document.getElementById('durHours').value = '';
+    document.getElementById('durMins').value = '';
+    // Highlight active button
+    document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    refreshFee();
+  }
+
+  function onCustomDur() {
+    const d = parseInt(document.getElementById('durDays').value) || 0;
+    const h = parseInt(document.getElementById('durHours').value) || 0;
+    const m = parseInt(document.getElementById('durMins').value) || 0;
+    selectedDurationSecs = d * 86400 + h * 3600 + m * 60;
+    // Deselect quick buttons
+    document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+  }
+
+  function getDurationLabel(secs) {
+    if (secs <= 0) return '—';
+    const d = Math.floor(secs / 86400);
+    const h = Math.floor((secs % 86400) / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const parts = [];
+    if (d > 0) parts.push(d + 'd');
+    if (h > 0) parts.push(h + 'h');
+    if (m > 0) parts.push(m + 'm');
+    if (parts.length === 0) parts.push(Math.round(secs) + 's');
+    return parts.join(' ');
+  }
+
+  // =====================================================================
+  // FEE PREVIEW
+  // =====================================================================
+  function refreshFee() {
+    const amount = parseFloat(document.getElementById('solAmount').value);
+    if (!amount || amount <= 0) {
+      document.getElementById('feeOps').textContent = '— SOL';
+      document.getElementById('feeGas').textContent = '— SOL';
+      document.getElementById('feeNet').textContent = '— SOL';
+      return;
+    }
+    const ops = amount * CONFIG.FEE_OPS;
+    const gas = amount * CONFIG.FEE_GAS;
+    const net = amount - ops - gas;
+    document.getElementById('feeOps').textContent = ops.toFixed(4) + ' SOL';
+    document.getElementById('feeGas').textContent = gas.toFixed(4) + ' SOL';
+    document.getElementById('feeNet').textContent = net.toFixed(4) + ' SOL';
+  }
+
+  // =====================================================================
+  // LOCK FLOW
+  // =====================================================================
+  function startLock() {
+    if (!walletPubkey) {
+      showToast('Please connect your wallet first.', 'error');
+      connectWallet();
+      return;
+    }
+    const amountEl = document.getElementById('solAmount');
+    const amount = parseFloat(amountEl.value);
+
+    if (!amount || amount < CONFIG.MIN_SOL) {
+      showToast('Minimum lock amount is ' + CONFIG.MIN_SOL + ' SOL', 'error');
+      amountEl.value = CONFIG.MIN_SOL.toFixed(2);
+      refreshFee();
+      return;
+    }
+    if (selectedDurationSecs < CONFIG.MIN_DURATION) {
+      showToast('Please select a lock duration (minimum 1 minute).', 'error');
+      return;
+    }
+
+    const ops = amount * CONFIG.FEE_OPS;
+    const gas = amount * CONFIG.FEE_GAS;
+    const net = amount - ops - gas;
+    const unlockTs = Math.floor(Date.now() / 1000) + selectedDurationSecs;
+
+    pendingLock = { amount, ops, gas, net, duration: selectedDurationSecs, unlockTs };
+
+    // Show modal
+    document.getElementById('modalDetails').innerHTML = `
+      <div class="modal-detail"><span class="label">Lock Amount</span><span class="value">${amount.toFixed(4)} SOL</span></div>
+      <div class="modal-detail"><span class="label">Duration</span><span class="value">${getDurationLabel(selectedDurationSecs)}</span></div>
+      <div class="modal-detail"><span class="label">Unlock Date</span><span class="value">${new Date(unlockTs*1000).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})}</span></div>
+      <div class="modal-detail"><span class="label">Platform Fee (2%)</span><span class="value">${ops.toFixed(4)} SOL</span></div>
+      <div class="modal-detail"><span class="label">You Receive Back</span><span class="value" style="color:var(--green)">${net.toFixed(4)} SOL</span></div>
+    `;
+    document.getElementById('confirmModal').classList.add('show');
+  }
+
+  function closeModal() {
+    document.getElementById('confirmModal').classList.remove('show');
+    pendingLock = null;
+  }
+
+  async function confirmLock() {
+    if (!pendingLock || !walletPubkey) return;
+
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    try {
+      const { sig: txSig, nonce: lockNonce } = await buildAndSendLockTx(pendingLock);
+      const lockId = Date.now();
+      userLocks.push({
+        id: lockId,
+        amountSol: pendingLock.amount,
+        netSol: pendingLock.net,
+        unlockTs: pendingLock.unlockTs,
+        txSig: txSig,
+        nonce: lockNonce,
+        withdrawn: false,
+      });
+      saveLocks();
+      updateStats();
+      renderLocks();
+      closeModal();
+      showToast('🔒 Lock confirmed! Tx: ' + txSig.slice(0,8) + '…', 'success');
+
+      // Reset form
+      document.getElementById('solAmount').value = '';
+      document.getElementById('durDays').value = '';
+      document.getElementById('durHours').value = '';
+      document.getElementById('durMins').value = '';
+      selectedDurationSecs = 0;
+      document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+      refreshFee();
+    } catch(err) {
+      console.error('[TimeLock] Lock error:', err);
+      if (err && err.logs) console.error('[TimeLock] Program logs:', err.logs);
+      // Build a readable error message regardless of error type
+      var errMsg = '';
+      if (err && err.message) {
+        errMsg = err.message;
+      } else if (typeof err === 'string') {
+        errMsg = err;
+      } else {
+        try { errMsg = JSON.stringify(err); } catch(e) { errMsg = String(err); }
+      }
+      // Append program logs hint
+      var logs = (err && err.logs) ? err.logs.join('\n') : errMsg;
+      var hint = logs.indexOf('AccountNotInitialized') >= 0 ? ' → アカウント未初期化' :
+                 logs.indexOf('InvalidOpsWallet')      >= 0 ? ' → OpsWallet不一致' :
+                 logs.indexOf('Unauthorized')          >= 0 ? ' → 権限エラー' :
+                 logs.indexOf('0xbc4')                 >= 0 ? ' → アカウント未初期化(0xbc4)' :
+                 logs.indexOf('already in use')        >= 0 ? ' → アカウント重複' : '';
+      showToast('Transaction failed: ' + errMsg + hint, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Lock It 🔒';
+    }
+  }
+
+  // =====================================================================
+  // =====================================================================
+  // TRANSACTION BUILDING
+  // =====================================================================
+
+  // Account discriminators: sha256("account:<Name>")[0..8]
+  // Config:     [155,12,170,224,30,250,204,130]
+  // UserState:  [72,177,85,249,76,167,186,126]
+  const CONFIG_DISC    = [155, 12, 170, 224, 30, 250, 204, 130];
+  const USERSTATE_DISC = [72, 177, 85, 249, 76, 167, 186, 126];
+
+  // =====================================================================
+  // ON-CHAIN LOCK RECOVERY
+  // ウォレットアドレスさえあれば、どのデバイス・どのサイトからでも
+  // 自分のロックを全件復元できる。localStorage不要。
+  // =====================================================================
+  async function loadOnChainLocks() {
+    if (!walletPubkey) return;
+    const web3 = solanaWeb3;
+    const conn = connection || new web3.Connection(CONFIG.RPC, 'confirmed');
+    const userPubkey = new web3.PublicKey(walletPubkey);
+    const programId  = new web3.PublicKey(CONFIG.PROGRAM_ID);
+
+    try {
+      // ① userState から lock_count を取得 → ノンス 0〜(lock_count-1) が全ロック
+      const [userStatePda] = web3.PublicKey.findProgramAddressSync(
+        [Buffer.from('user_state'), userPubkey.toBuffer()], programId
+      );
+      const userStateInfo = await conn.getAccountInfo(userStatePda);
+      if (!userStateInfo || userStateInfo.data.length < 49) return; // まだロックなし
+
+      const sbuf = Buffer.from(userStateInfo.data);
+      const lockCount = Number(sbuf.readBigUInt64LE(40)); // offset 40 = lock_count
+      if (lockCount === 0) return;
+
+      console.log('[TimeLock] On-chain scan: found lock_count =', lockCount);
+
+      for (var nonce = 0; nonce < lockCount; nonce++) {
+        // すでに localStorage にある (未引き出し) ならスキップ
+        if (userLocks.some(function(l) { return l.nonce === nonce && !l.withdrawn; })) continue;
+
+        var nonceSeed = Buffer.from(new Uint8Array(new BigUint64Array([BigInt(nonce)]).buffer));
+        var [lockRecordPda] = web3.PublicKey.findProgramAddressSync(
+          [Buffer.from('lock'), userPubkey.toBuffer(), nonceSeed], programId
+        );
+        var [vaultPda] = web3.PublicKey.findProgramAddressSync(
+          [Buffer.from('vault'), userPubkey.toBuffer(), nonceSeed], programId
+        );
+
+        // lockRecord が存在しない = 引き出し済み → スキップ
+        var lockInfo = await conn.getAccountInfo(lockRecordPda);
+        if (!lockInfo || lockInfo.data.length < 57) {
+          console.log('[TimeLock] nonce', nonce, ': account missing/closed (withdrawn)');
+          continue;
+        }
+
+        // vaultPda の実残高 = ユーザーが受け取れる実際のSOL
+        var vaultLamports = await conn.getBalance(vaultPda);
+
+        // vault が空 = 引き出し済み（lockRecordが閉じられていないケースも）→ スキップ
+        if (vaultLamports === 0) {
+          console.log('[TimeLock] nonce', nonce, ': vault empty, skipping (already withdrawn)');
+          continue;
+        }
+
+        // LockRecord レイアウト推定:
+        // disc(8) + owner(32) + amount(8) + duration(8) + created_at(8) + nonce(8) + bump(1)
+        var lbuf = Buffer.from(lockInfo.data);
+        console.log('[TimeLock] nonce', nonce, 'raw bytes[0..80]:', Array.from(lbuf.slice(0, 80)));
+
+        var amountLamports = Number(lbuf.readBigUInt64LE(40));
+        var netSol         = vaultLamports / web3.LAMPORTS_PER_SOL; // 実際の引き出し可能残高
+        var amountSol      = amountLamports / web3.LAMPORTS_PER_SOL;
+
+        // unlockTs の解析: 複数レイアウトを試す
+        var now = Math.floor(Date.now() / 1000);
+        var unlockTs;
+
+        // 試行1: created_at(offset56) + duration(offset48)
+        var dur1 = Number(lbuf.readBigInt64LE(48));
+        var ca1  = Number(lbuf.readBigInt64LE(56));
+        var ts1  = ca1 + dur1;
+
+        // 試行2: unlock_ts が offset48 に直接格納
+        var ts2 = Number(lbuf.readBigInt64LE(48));
+
+        // 妥当な範囲（2020年〜2050年）のものを採用
+        var valid = function(ts) { return ts > 1577836800 && ts < 2524608000; };
+        if (valid(ts1))      { unlockTs = ts1; }
+        else if (valid(ts2)) { unlockTs = ts2; }
+        else {
+          console.warn('[TimeLock] nonce', nonce, ': could not parse unlockTs, skipping');
+          continue; // 解析できなければスキップ
+        }
+
+        console.log('[TimeLock] Recovered lock: nonce=' + nonce
+          + ' amount=' + amountSol.toFixed(4) + ' SOL'
+          + ' vault=' + netSol.toFixed(4) + ' SOL'
+          + ' unlockTs=' + new Date(unlockTs * 1000).toISOString());
+
+        userLocks.push({
+          id: 900000000 + nonce, // 固定IDで重複防止
+          amountSol: amountSol,
+          netSol:    netSol,
+          unlockTs:  unlockTs,
+          nonce:     nonce,
+          withdrawn: false,
+          fromChain: true,
+        });
+      }
+
+      saveLocks();
+      renderLocks();
+      updateStats();
+
+    } catch(e) {
+      console.warn('[TimeLock] On-chain scan error:', e.message || e);
+    }
+  }
+
+  function discMatch(data, expected) {
+    if (!data || data.length < 8) return false;
+    for (var i = 0; i < 8; i++) { if (data[i] !== expected[i]) return false; }
+    return true;
+  }
+
+  // Send a raw signed transaction, skip preflight, wait for on-chain confirmation.
+  // Throws if the transaction was confirmed but FAILED on-chain.
+  async function sendAndWait(conn, signedTx) {
+    var raw = signedTx.serialize();
+    var sig = await conn.sendRawTransaction(raw, { skipPreflight: true });
+    console.log('[TimeLock] TX sent:', sig);
+
+    // Poll for on-chain confirmation (up to 45s, every 1.5s)
+    for (var attempt = 0; attempt < 30; attempt++) {
+      await new Promise(function(r) { setTimeout(r, 1500); });
+      try {
+        var statuses = await conn.getSignatureStatuses([sig], { searchTransactionHistory: false });
+        var status = statuses && statuses.value && statuses.value[0];
+        if (!status) {
+          console.log('[TimeLock] Poll ' + attempt + ': not found yet');
+          continue;
+        }
+        console.log('[TimeLock] Poll ' + attempt + ':', status.confirmationStatus, 'err:', JSON.stringify(status.err));
+        if (status.err) {
+          // TX failed on-chain - try to get program logs
+          var errMsg = 'TX failed: ' + JSON.stringify(status.err);
+          try {
+            var txInfo = await conn.getTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+            if (txInfo && txInfo.meta && txInfo.meta.logMessages) {
+              console.error('[TimeLock] Program logs:', txInfo.meta.logMessages);
+              errMsg += ' | ' + txInfo.meta.logMessages.join(' | ');
+            }
+          } catch(e) { /* ignore */ }
+          throw new Error(errMsg);
+        }
+        if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
+          console.log('[TimeLock] TX confirmed:', sig);
+          return sig;
+        }
+      } catch(pollErr) {
+        if (pollErr.message && pollErr.message.indexOf('TX failed:') === 0) throw pollErr;
+        console.warn('[TimeLock] Poll error (retrying):', pollErr.message || pollErr);
+      }
+    }
+    throw new Error('TX confirmation timeout (45s). Check Solscan: ' + sig.slice(0,20));
+  }
+
+  async function buildAndSendLockTx(lock) {
+    const web3 = solanaWeb3;
+    const conn = connection || new web3.Connection(CONFIG.RPC, 'confirmed');
+
+    const lamports = Math.floor(lock.amount * web3.LAMPORTS_PER_SOL);
+    const durationBN = lock.duration;
+
+    const userPubkey = new web3.PublicKey(walletPubkey);
+    const programId  = new web3.PublicKey(CONFIG.PROGRAM_ID);
+    // opsWallet will be resolved after reading config account (see below)
+
+    // ---- PDAs ----
+    const [configPda] = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('config')], programId
+    );
+    const [userStatePda] = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('user_state'), userPubkey.toBuffer()], programId
+    );
+
+    // ---- Read on-chain state ----
+    let [configInfo, userStateInfo] = await Promise.all([
+      conn.getAccountInfo(configPda),
+      conn.getAccountInfo(userStatePda),
+    ]);
+
+    // Check initialization by discriminator bytes, not just data length
+    const configOk    = discMatch(configInfo    && configInfo.data,    CONFIG_DISC);
+    const userStateOk = discMatch(userStateInfo && userStateInfo.data, USERSTATE_DISC);
+
+    console.log('[TimeLock] configPda:', configPda.toBase58(),
+      'data len:', configInfo ? configInfo.data.length : 0,
+      'disc ok:', configOk);
+    console.log('[TimeLock] userStatePda:', userStatePda.toBase58(),
+      'data len:', userStateInfo ? userStateInfo.data.length : 0,
+      'disc ok:', userStateOk);
+
+    // Resolve ops_wallet:
+    // If config is already initialized, READ ops_wallet from on-chain data (offset 8..40).
+    // This avoids any mismatch between CONFIG.OPS_WALLET and what's stored on-chain.
+    let opsWallet;
+    if (configOk && configInfo && configInfo.data.length >= 40) {
+      opsWallet = new web3.PublicKey(configInfo.data.slice(8, 40));
+      console.log('[TimeLock] ops_wallet read from config account:', opsWallet.toBase58());
+    } else {
+      opsWallet = new web3.PublicKey(CONFIG.OPS_WALLET);
+      console.log('[TimeLock] ops_wallet from CONFIG (config not yet initialized):', opsWallet.toBase58());
+    }
+
+    // =========================================================
+    // TX 1 (if needed): initialize config and/or init_user_state
+    // Sent separately and confirmed BEFORE create_lock.
+    // Uses skipPreflight so simulation quirks don't block us.
+    // =========================================================
+    const setupIxs = [];
+
+    if (!configOk) {
+      const disc = Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]);
+      const data = Buffer.alloc(8 + 32);
+      disc.copy(data, 0);
+      var owBytes = opsWallet.toBuffer();
+      for (var i = 0; i < 32; i++) data[8 + i] = owBytes[i];
+      console.log('[TimeLock] Need to initialize config');
+      setupIxs.push(new web3.TransactionInstruction({
+        programId,
+        keys: [
+          { pubkey: configPda,  isSigner: false, isWritable: true  },
+          { pubkey: userPubkey, isSigner: true,  isWritable: true  },
+          { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data,
+      }));
+    }
+
+    if (!userStateOk) {
+      const disc = Buffer.from([229, 142, 179, 158, 177, 92, 220, 92]);
+      const data = Buffer.alloc(8);
+      disc.copy(data, 0);
+      console.log('[TimeLock] Need to init_user_state (with config as first account)');
+      setupIxs.push(new web3.TransactionInstruction({
+        programId,
+        keys: [
+          { pubkey: configPda,    isSigner: false, isWritable: true  }, // config is required first
+          { pubkey: userStatePda, isSigner: false, isWritable: true  },
+          { pubkey: userPubkey,   isSigner: true,  isWritable: true  },
+          { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data,
+      }));
+    }
+
+    if (setupIxs.length > 0) {
+      console.log('[TimeLock] Sending setup TX (' + setupIxs.length + ' ix)');
+      const { blockhash: bh1, lastValidBlockHeight: lvbh1 } = await conn.getLatestBlockhash('confirmed');
+      const setupTx = new web3.Transaction();
+      setupTx.recentBlockhash = bh1;
+      setupTx.feePayer = userPubkey;
+      setupIxs.forEach(function(ix) { setupTx.add(ix); });
+
+      const signed1 = await walletProvider.signTransaction(setupTx);
+      await sendAndWait(conn, signed1, bh1, lvbh1);
+
+      // Re-fetch userState AFTER confirmation so lock_count is fresh
+      userStateInfo = await conn.getAccountInfo(userStatePda);
+      console.log('[TimeLock] After setup, userState data len:', userStateInfo ? userStateInfo.data.length : 0);
+
+      // Small delay to let devnet propagate before TX 2
+      await new Promise(function(r) { setTimeout(r, 1500); });
+    }
+
+    // =========================================================
+    // TX 2: create_lock
+    // =========================================================
+
+    // UserState layout: disc(8) + owner(32) + lock_count u64(8) + bump(1)
+    let nonce = 0;
+    if (userStateInfo && userStateInfo.data.length >= 49) {
+      const buf = Buffer.from(userStateInfo.data);
+      nonce = Number(buf.readBigUInt64LE(40)); // lock_count at offset 40
+    }
+
+    const nonceSeedBytes = Buffer.from(new Uint8Array(new BigUint64Array([BigInt(nonce)]).buffer));
+
+    const [lockRecordPda] = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('lock'), userPubkey.toBuffer(), nonceSeedBytes], programId
+    );
+    const [vaultPda] = web3.PublicKey.findProgramAddressSync(
+      [Buffer.from('vault'), userPubkey.toBuffer(), nonceSeedBytes], programId
+    );
+
+    console.log('[TimeLock] nonce:', nonce,
+      '| lock:', lockRecordPda.toBase58().slice(0,8) + '...',
+      '| vault:', vaultPda.toBase58().slice(0,8) + '...');
+
+    const createDisc = Buffer.from([171, 216, 92, 167, 165, 8, 153, 90]);
+    const createData = Buffer.alloc(8 + 8 + 8);
+    createDisc.copy(createData, 0);
+    createData.writeBigUInt64LE(BigInt(lamports), 8);
+    createData.writeBigInt64LE(BigInt(durationBN), 16);
+
+    const { blockhash: bh2, lastValidBlockHeight: lvbh2 } = await conn.getLatestBlockhash('confirmed');
+    const lockTx = new web3.Transaction();
+    lockTx.recentBlockhash = bh2;
+    lockTx.feePayer = userPubkey;
+    lockTx.add(new web3.TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: configPda,     isSigner: false, isWritable: true  },
+        { pubkey: userStatePda,  isSigner: false, isWritable: true  },
+        { pubkey: lockRecordPda, isSigner: false, isWritable: true  },
+        { pubkey: vaultPda,      isSigner: false, isWritable: true  },
+        { pubkey: opsWallet,     isSigner: false, isWritable: true  },
+        { pubkey: userPubkey,    isSigner: true,  isWritable: true  },
+        { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: createData,
+    }));
+
+    console.log('[TimeLock] Sending create_lock TX, lamports:', lamports, 'duration:', durationBN);
+    const signed2 = await walletProvider.signTransaction(lockTx);
+    const sig = await sendAndWait(conn, signed2, bh2, lvbh2);
+    return { sig, nonce };
+  }
+
+  // =====================================================================
+  // WITHDRAW
+  // =====================================================================
+  async function withdraw(lockId) {
+    const lock = userLocks.find(l => l.id === lockId);
+    if (!lock || lock.withdrawn) return;
+    if (Date.now() / 1000 < lock.unlockTs) {
+      showToast('Lock has not expired yet!', 'error');
+      return;
+    }
+    if (!walletPubkey) {
+      showToast('Please connect your wallet.', 'error');
+      return;
+    }
+
+    try {
+      const web3 = solanaWeb3;
+      const conn = connection || new web3.Connection(CONFIG.RPC, 'confirmed');
+      const userPubkey = new web3.PublicKey(walletPubkey);
+      const programId = new web3.PublicKey(CONFIG.PROGRAM_ID);
+
+      // Use the nonce stored at lock creation time
+      const nonce = lock.nonce !== undefined ? lock.nonce : 0;
+
+      const [configPda] = web3.PublicKey.findProgramAddressSync([Buffer.from('config')], programId);
+      const [userStatePda] = web3.PublicKey.findProgramAddressSync(
+        [Buffer.from('user_state'), userPubkey.toBuffer()], programId
+      );
+      const nonceSeed = Buffer.from(new Uint8Array(new BigUint64Array([BigInt(nonce)]).buffer));
+      const [lockRecordPda] = web3.PublicKey.findProgramAddressSync(
+        [Buffer.from('lock'), userPubkey.toBuffer(), nonceSeed],
+        programId
+      );
+      const [vaultPda] = web3.PublicKey.findProgramAddressSync(
+        [Buffer.from('vault'), userPubkey.toBuffer(), nonceSeed],
+        programId
+      );
+
+      const withdrawDisc = Buffer.from([183, 18, 70, 156, 148, 109, 161, 34]); // sha256("global:withdraw")[0..8]
+      const withdrawData = Buffer.alloc(8 + 8);
+      withdrawDisc.copy(withdrawData, 0);
+      withdrawData.writeBigUInt64LE(BigInt(nonce), 8); // _nonce: u64
+
+      const { blockhash: wbh, lastValidBlockHeight: wlvbh } = await conn.getLatestBlockhash('confirmed');
+      const tx = new web3.Transaction();
+      tx.recentBlockhash = wbh;
+      tx.feePayer = userPubkey;
+      // Withdraw accounts: lock(mut), vault(mut), user(signer,mut), system_program
+      tx.add(new web3.TransactionInstruction({
+        programId,
+        keys: [
+          { pubkey: lockRecordPda, isSigner: false, isWritable: true  },
+          { pubkey: vaultPda,      isSigner: false, isWritable: true  },
+          { pubkey: userPubkey,    isSigner: true,  isWritable: true  },
+          { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data: withdrawData,
+      }));
+
+      const signed = await walletProvider.signTransaction(tx);
+      const sig = await sendAndWait(conn, signed, wbh, wlvbh);
+
+      lock.withdrawn = true;
+      saveLocks();
+      updateStats();
+      renderLocks();
+      showToast('✅ Withdrawn! Tx: ' + sig.slice(0,8) + '…', 'success');
+    } catch(err) {
+      showToast('Withdrawal failed: ' + (err.message || err), 'error');
+    }
+  }
+
+  // =====================================================================
+  // RENDER LOCKS
+  // =====================================================================
+  function pad(n) { return String(Math.floor(n)).padStart(2,'0'); }
+
+  function formatCountdown(remaining) {
+    if (remaining <= 0) return '<span style="color:var(--green)">UNLOCKED ✓</span>';
+    const days  = Math.floor(remaining / 86400);
+    const hours = Math.floor((remaining % 86400) / 3600);
+    const mins  = Math.floor((remaining % 3600) / 60);
+    const secs  = Math.floor(remaining % 60);
+    if (days > 0) return `${days}d ${pad(hours)}h ${pad(mins)}m ${pad(secs)}s`;
+    return `${pad(hours)}h ${pad(mins)}m ${pad(secs)}s`;
+  }
+
+  function renderLocks() {
+    const container = document.getElementById('locksContainer');
+    // 未接続の場合は何も表示しない（他人のロックが見えないよう）
+    // fromChain 復元ロックで netSol=0 のものも除外（引き出し済み判定漏れ対策）
+    const filtered = walletPubkey
+      ? userLocks.filter(l => !l.withdrawn && !(l.fromChain && l.netSol === 0))
+      : [];
+
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⏳</div>
+          <p>${walletPubkey ? 'No active locks. Create your first lock above!' : 'Connect your wallet to see your locks.'}</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = filtered.map(lock => {
+      const now = Date.now() / 1000;
+      const remaining = lock.unlockTs - now;
+      const isExpired = remaining <= 0;
+      return `
+        <div class="lock-card ${isExpired ? 'unlocked' : ''}" id="lock-${lock.id}">
+          <div class="lock-header">
+            <div>
+              <div class="lock-amount">${lock.netSol.toFixed(4)} SOL</div>
+              <div style="font-size:0.8rem;color:var(--text-dimmer);margin-top:4px">
+                Locked: ${lock.amountSol.toFixed(4)} SOL ·
+                Unlock: ${new Date(lock.unlockTs*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+              </div>
+            </div>
+            <div class="lock-badge ${isExpired ? 'unlocked' : 'locked'}">${isExpired ? 'Unlocked' : 'Locked'}</div>
+          </div>
+          <div class="countdown ${isExpired ? 'expired' : ''}" id="cd-${lock.id}">${formatCountdown(remaining)}</div>
+          <div class="countdown-label">Time Remaining</div>
+          ${isExpired ? `<button class="btn-unlock" onclick="withdraw(${lock.id})">Withdraw ${lock.netSol.toFixed(4)} SOL</button>` : ''}
+          ${lock.txSig ? `<div style="margin-top:10px;font-size:0.75rem;color:var(--text-dimmer)">Tx: <a href="https://explorer.solana.com/tx/${lock.txSig}?cluster=mainnet-beta" target="_blank" style="color:var(--purple-light)">${lock.txSig.slice(0,12)}…</a></div>` : ''}
+          ${lock.fromChain && !lock.txSig ? `<div style="margin-top:10px;font-size:0.75rem;color:var(--purple-light);opacity:0.7">⛓️ Recovered from blockchain</div>` : ''}
+        </div>`;
+    }).join('');
+
+    startCountdown();
+  }
+
+  function startCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      const now = Date.now() / 1000;
+      userLocks.forEach(lock => {
+        if (lock.withdrawn) return;
+        const el = document.getElementById('cd-' + lock.id);
+        if (!el) return;
+        const remaining = lock.unlockTs - now;
+        el.innerHTML = formatCountdown(remaining);
+        // When lock expires, re-render to show Withdraw button
+        if (remaining <= 0 && !lock._expiredNotified) {
+          lock._expiredNotified = true;
+          renderLocks();
+        }
+      });
+    }, 1000);
+  }
+
+  // =====================================================================
+  // STATS (computed from real lock data)
+  // =====================================================================
+  function updateStats() {
+    const activeLocks = userLocks.filter(l => !l.withdrawn);
+    const totalSol = activeLocks.reduce((sum, l) => sum + l.amountSol, 0);
+    document.getElementById('statLocks').textContent = activeLocks.length;
+    document.getElementById('statSol').textContent =
+      totalSol >= 1000 ? (totalSol/1000).toFixed(1) + 'k' : totalSol.toFixed(2);
+  }
+
+  // =====================================================================
+  // TOAST
+  // =====================================================================
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    setTimeout(() => { t.className = 'toast'; }, 4000);
+  }
+
+  // =====================================================================
+  // INIT
+  // =====================================================================
+  window.addEventListener('DOMContentLoaded', () => {
+    refreshFee();
+    renderLocks();
+    updateStats();
+
+    // Auto-reconnect if wallet was previously connected
+    const provider = detectWallet();
+    if (provider) {
+      provider.connect({ onlyIfTrusted: true })
+        .then(resp => {
+          walletProvider = provider;
+          walletPubkey = (resp?.publicKey || provider.publicKey).toString();
+          connection = new solanaWeb3.Connection(CONFIG.RPC, 'confirmed');
+          const btn = document.getElementById('walletBtn');
+          const short = walletPubkey.slice(0,4) + '...' + walletPubkey.slice(-4);
+          btn.textContent = '🟢 ' + short;
+          btn.classList.add('connected');
+          renderLocks();
+          updateStats();
+        })
+        .catch(() => {}); // not previously trusted — silent
+    }
+  });
+  </script>
+</body>
+</html>
